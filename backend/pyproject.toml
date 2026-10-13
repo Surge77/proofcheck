@@ -1,0 +1,55 @@
+[project]
+name = "proofcheck"
+version = "0.1.0"
+description = "Check UPI payment screenshots against your bank statement with local open-weight models."
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "fastapi==0.142.2",
+    "uvicorn[standard]==0.54.0",
+    "pydantic-settings==2.15.0",
+    "python-multipart==0.0.32",
+    "httpx==0.28.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "pyright==1.1.414",
+    "ruff==0.16.9",
+]
+
+[project.scripts]
+proofcheck = "proofcheck.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "--strict-markers -m 'not live'"
+markers = ["live: talks to a real local Ollama server (run with -m live)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "PTH", "RUF"]
+# FastAPI's `Depends()`/`File()` defaults are the documented pattern.
+ignore = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["proofcheck"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
