@@ -10,6 +10,9 @@ dependencies = [
     "pydantic-settings==2.15.0",
     "python-multipart==0.0.32",
     "httpx==0.28.1",
+    "pillow==12.3.0",
+    "rapidocr==3.9.2",
+    "onnxruntime==1.30.0",
 ]
 
 [dependency-groups]
