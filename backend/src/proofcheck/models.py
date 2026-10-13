@@ -29,3 +29,27 @@ class Receipt(BaseModel):
     confidence: Confidence
     # Plain-language reasons shown to the user when confidence is low.
     issues: tuple[str, ...] = ()
+
+
+class StatementTxn(BaseModel):
+    """One credit (money in) from the bank statement."""
+
+    model_config = ConfigDict(frozen=True)
+
+    row: int  # 1-based row in the uploaded file, so the user can find it
+    posted_on: date
+    amount: Decimal
+    utr: str | None
+    payer: str | None
+    vpa: str | None
+    narration: str
+
+
+class Statement(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    bank: str
+    credits: tuple[StatementTxn, ...]
+    # Dates covered by the file (all rows, not just credits); screenshots outside it are flagged.
+    period_start: date
+    period_end: date
