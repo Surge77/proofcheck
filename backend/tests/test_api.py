@@ -126,3 +126,18 @@ def test_health_reports_vision_model_status(client: TestClient) -> None:
     assert body["status"] == "ok"
     assert body["vision"] is False  # tests point Ollama at a dead port
     assert body["model"] == "gemma3:4b"
+
+
+def test_unexpected_extraction_failure_becomes_an_unreadable_row(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def broken_extract(_source: str, _data: bytes) -> Receipt:
+        raise RuntimeError("onnxruntime fell over")
+
+    monkeypatch.setattr(api, "extract", broken_extract)
+
+    response = post(client, [("a.png", receipt_png(), "image/png")])
+
+    [match] = events(response)[-1]["report"]["matches"]
+    assert match["status"] == "unreadable"
+    assert "onnxruntime" not in response.text  # internal details stay internal

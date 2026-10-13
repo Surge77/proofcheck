@@ -5,6 +5,7 @@ length of one request and are gone when it ends.
 """
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from pathlib import PurePosixPath, PureWindowsPath
 
@@ -30,6 +31,7 @@ MAX_ROSTER_BYTES = 256 * 1024
 MAX_NAME_LENGTH = 120
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger(__name__)
 
 
 @router.get("/health")
@@ -82,6 +84,11 @@ async def _receipt(upload: UploadFile) -> Receipt:
         return await extract(source, data)
     except ImageError as error:
         return unreadable_receipt(source, str(error))
+    except Exception as error:
+        # One broken screenshot must not cut off the stream for the other 29. Log the error
+        # type only: messages can contain file paths or screenshot text.
+        log.warning("screenshot extraction failed: %s", type(error).__name__)
+        return unreadable_receipt(source, "Could not process this file. Check it by hand.")
 
 
 def _line(event: dict[str, object]) -> bytes:
