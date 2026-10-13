@@ -23,6 +23,9 @@ OCR_MAX_SIDE = 2000
 VISION_MAX_SIDE = 1024
 
 _SUCCESS_WORDS = re.compile(r"\b(success(ful)?|completed|paid)\b", re.IGNORECASE)
+_FAILURE_WORDS = re.compile(
+    r"\b(fail(ed|ure)?|pending|declined|reversed|refunded|processing|cancell?ed)\b", re.IGNORECASE
+)
 
 
 def _ocr_utr(lines: Sequence[str]) -> str | None:
@@ -69,27 +72,62 @@ def _fuse_amount(
     return fallback, False
 
 
+def _fuse_status(
+    lines: Sequence[str], vision_status: PaymentStatus | None, issues: list[str]
+) -> tuple[PaymentStatus, bool]:
+    """Returns (status, confirmed_by_screen_text).
+
+    Gemma reads the status, but text planted in a screenshot can talk it into
+    "success". The OCR'd words must agree before a success counts as confirmed.
+    """
+    text = " ".join(lines)
+    shows_success = bool(_SUCCESS_WORDS.search(text))
+    shows_failure = bool(_FAILURE_WORDS.search(text))
+    status: PaymentStatus
+    if vision_status is None:
+        status = "success" if shows_success and not shows_failure else "unclear"
+    elif vision_status == "success" and shows_failure:
+        status = "unclear"
+        issues.append("The screenshot text mentions a failed or pending payment.")
+    else:
+        status = vision_status
+    if status != "success":
+        issues.append(f"Screenshot does not show a successful payment (status: {status}).")
+    elif not shows_success:
+        issues.append("No 'success' or 'paid' wording was found on the screenshot.")
+    return status, status == "success" and shows_success and not shows_failure
+
+
+def _words(text: str) -> list[str]:
+    return re.sub(r"[^A-Za-z]+", " ", text).upper().split()
+
+
+def _fuse_payer(lines: Sequence[str], payer: str | None, issues: list[str]) -> str | None:
+    """Keep Gemma's payer name only if every word of it is printed on the screenshot."""
+    if not payer:
+        return None
+    on_screen = set(_words(" ".join(lines)))
+    words = _words(payer)
+    if words and all(word in on_screen for word in words):
+        return payer
+    issues.append("The payer's name was not found in the screenshot text, so it was left out.")
+    return None
+
+
 def fuse(source: str, lines: Sequence[str], reading: VisionReading | None) -> Receipt:
     issues: list[str] = []
     if reading is None:
         issues.append("Read with OCR only (the local vision model was unavailable).")
     utr, utr_ok = _fuse_utr(lines, reading.utr if reading else None, issues)
     amount, amount_ok = _fuse_amount(lines, reading.amount if reading else None, issues)
+    status, status_ok = _fuse_status(lines, reading.status if reading else None, issues)
 
-    status: PaymentStatus
-    if reading is not None:
-        status = reading.status
-    else:
-        status = "success" if _SUCCESS_WORDS.search(" ".join(lines)) else "unclear"
-    if status != "success":
-        issues.append(f"Screenshot does not show a successful payment (status: {status}).")
-
-    is_high = reading is not None and utr_ok and amount_ok and status == "success"
+    is_high = reading is not None and utr_ok and amount_ok and status_ok
     return Receipt(
         source=source,
         utr=utr,
         amount=amount,
-        payer=reading.payer if reading else None,
+        payer=_fuse_payer(lines, reading.payer, issues) if reading else None,
         paid_on=reading.paid_on if reading else None,
         app=reading.app if reading else None,
         status=status,
