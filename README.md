@@ -14,6 +14,8 @@ who really paid.
 Nothing is uploaded anywhere. The models run on your machine, uploads stay in memory, and your
 bank statement never leaves your laptop.
 
+![ProofCheck report on the demo data: 3 verified, 2 not in statement, 1 amount differs, 1 duplicate, 1 outside dates, and who has paid](docs/report.png)
+
 ## What it tells you
 
 | Result | Meaning |
@@ -96,9 +98,12 @@ for OCR alone, plus the number that matters most: how often a *high-confidence* 
 Output masks every UTR to its last four digits.
 
 On the synthetic demo set, the full pipeline (real OCR and real Gemma) gives the expected result
-for all 8 screenshots and all 8 roster lines, in 196 s on a GTX 1650 (4 GB), about 24 s per
-screenshot. That proves the pipeline works end to end. It says nothing about accuracy on real
+for all 8 screenshots and all 8 roster lines. On a GTX 1650 (4 GB), the first run took 196 s
+including model loading; with the model warm, the browser run above took ~94 s (~12 s per
+screenshot). That proves the pipeline works end to end. It says nothing about accuracy on real
 phone screenshots.
+
+![Results stream in while screenshots are read](docs/progress.png)
 
 Results on real screenshots: *pending*. They'll be published here once measured.
 
