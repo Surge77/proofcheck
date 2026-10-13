@@ -1,5 +1,5 @@
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -18,6 +18,20 @@ FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
+def static_file(root: Path, path: str) -> Path | None:
+    """The file under `root` that `path` names, or None. Checks the text before touching disk.
+
+    On Windows, joining a drive ("C:/...") or UNC ("\\\\host\\share") component discards
+    `root`, and resolving a UNC path can trigger an outbound SMB lookup. So anything with
+    a backslash, a colon or a ".." segment is refused before any filesystem call.
+    """
+    parts = PurePosixPath(path).parts
+    if not parts or "\\" in path or ":" in path or "\0" in path or ".." in parts:
+        return None
+    candidate = root.joinpath(*parts)
+    return candidate if candidate.is_file() else None
+
+
 def _mount_frontend(app: FastAPI) -> None:
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
@@ -25,13 +39,7 @@ def _mount_frontend(app: FastAPI) -> None:
     async def spa(path: str) -> FileResponse:
         if path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not found")
-        try:
-            candidate = (FRONTEND_DIST / path).resolve()
-        except (OSError, ValueError):  # e.g. a null byte in the path
-            candidate = FRONTEND_DIST / "index.html"
-        if path and candidate.is_file() and candidate.is_relative_to(FRONTEND_DIST):
-            return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        return FileResponse(static_file(FRONTEND_DIST, path) or FRONTEND_DIST / "index.html")
 
 
 def create_app() -> FastAPI:
@@ -54,6 +62,14 @@ app = create_app()
 
 
 def run() -> None:
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
     settings = get_settings()
-    uvicorn.run("proofcheck.main:app", host=settings.host, port=settings.port)
+    print(f"ProofCheck is running at http://{settings.host}:{settings.port}")
+    # No access log: request lines are noise for a single-user local tool.
+    uvicorn.run(
+        "proofcheck.main:app",
+        host=settings.host,
+        port=settings.port,
+        access_log=False,
+        log_level="warning",
+    )
