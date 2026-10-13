@@ -7,15 +7,17 @@ length of one request and are gone when it ends.
 import json
 from collections.abc import AsyncIterator
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from starlette.datastructures import FormData, UploadFile
+from starlette.formparsers import MultiPartException
 
 from proofcheck import vision
 from proofcheck.config import get_settings
 from proofcheck.extract import extract
 from proofcheck.imaging import ImageError
+from proofcheck.limits import InMemoryMultiPartParser
 from proofcheck.models import Receipt, RosterEntry, Statement
 from proofcheck.report import build_report, unreadable_receipt
 from proofcheck.roster import RosterError, parse_roster
@@ -86,32 +88,70 @@ def _line(event: dict[str, object]) -> bytes:
     return (json.dumps(event, default=str) + "\n").encode()
 
 
-@router.post("/check")
-async def check(
-    screenshots: Annotated[list[UploadFile], File()],
-    statement: Annotated[UploadFile, File()],
-    roster: Annotated[UploadFile | None, File()] = None,
-) -> StreamingResponse:
+async def _parse_form(request: Request) -> FormData:
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raise HTTPException(415, "Send the files as multipart/form-data.")
+    # Not FastAPI's File() parameters: those spool parts over 1 MB to a temp file on disk.
+    parser = InMemoryMultiPartParser(
+        request.headers, request.stream(), max_files=MAX_SCREENSHOTS + 2, max_fields=0
+    )
+    try:
+        return await parser.parse()
+    except MultiPartException as error:
+        raise HTTPException(413 if "Too many" in str(error) else 400, str(error)) from error
+
+
+def _files(form: FormData, field: str) -> list[UploadFile]:
+    items = form.getlist(field)
+    files = [item for item in items if isinstance(item, UploadFile)]
+    if len(files) != len(items):
+        raise HTTPException(422, f"'{field}' must be a file.")
+    return files
+
+
+async def _inputs(
+    form: FormData,
+) -> tuple[list[UploadFile], Statement, tuple[RosterEntry, ...] | None]:
+    screenshots = _files(form, "screenshots")
+    statements, rosters = _files(form, "statement"), _files(form, "roster")
+    if not screenshots:
+        raise HTTPException(422, "Add at least one payment screenshot.")
     if len(screenshots) > MAX_SCREENSHOTS:
         raise HTTPException(413, f"Upload at most {MAX_SCREENSHOTS} screenshots at a time.")
+    if len(statements) != 1 or len(rosters) > 1:
+        raise HTTPException(422, "Add exactly one bank statement and at most one roster.")
     # Validate the cheap inputs first, so a bad statement fails before minutes of OCR.
-    parsed_statement = await _statement(statement)
-    entries = await _roster(roster)
+    statement = await _statement(statements[0])
+    roster = await _roster(rosters[0] if rosters else None)
+    return screenshots, statement, roster
+
+
+@router.post("/check")
+async def check(request: Request) -> StreamingResponse:
+    form = await _parse_form(request)
+    try:
+        screenshots, statement, roster = await _inputs(form)
+    except HTTPException:
+        await form.close()
+        raise
 
     async def stream() -> AsyncIterator[bytes]:
-        receipts: list[Receipt] = []
-        for upload in screenshots:
-            # One at a time on purpose: the GPU holds one vision model and can't run two.
-            receipts.append(await _receipt(upload))
-            yield _line(
-                {
-                    "type": "progress",
-                    "done": len(receipts),
-                    "total": len(screenshots),
-                    "receipt": receipts[-1].model_dump(mode="json"),
-                }
-            )
-        report = build_report(receipts, parsed_statement, entries)
-        yield _line({"type": "report", "report": report.model_dump(mode="json")})
+        try:
+            receipts: list[Receipt] = []
+            for upload in screenshots:
+                # One at a time on purpose: the GPU holds one vision model and can't run two.
+                receipts.append(await _receipt(upload))
+                yield _line(
+                    {
+                        "type": "progress",
+                        "done": len(receipts),
+                        "total": len(screenshots),
+                        "receipt": receipts[-1].model_dump(mode="json"),
+                    }
+                )
+            report = build_report(receipts, statement, roster)
+            yield _line({"type": "report", "report": report.model_dump(mode="json")})
+        finally:
+            await form.close()  # frees the in-memory copies of every upload
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

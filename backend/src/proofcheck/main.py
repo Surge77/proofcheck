@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from proofcheck.api import router
 from proofcheck.config import get_settings
+from proofcheck.limits import BodySizeLimit
 
 # The built frontend is served from the same port, so the app is a single local address.
 FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware, allow_origins=DEV_ORIGINS, allow_methods=["*"], allow_headers=["*"]
     )
+    app.add_middleware(BodySizeLimit)
     app.include_router(router)
     if (FRONTEND_DIST / "assets").is_dir():
         _mount_frontend(app)
