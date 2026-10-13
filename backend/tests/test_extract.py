@@ -154,3 +154,11 @@ def test_payer_name_match_ignores_case_and_spacing() -> None:
 
     assert receipt.payer == "RAMESH  kumar"
     assert receipt.confidence == "high"
+
+
+def test_payer_check_tolerates_ocr_confusing_capital_i_with_small_l() -> None:
+    lines = [*LINES[:2], "From: Meera lyer", *LINES[3:]]
+
+    receipt = fuse("a.png", lines, reading(payer="Meera Iyer"))
+
+    assert receipt.payer == "Meera Iyer"
