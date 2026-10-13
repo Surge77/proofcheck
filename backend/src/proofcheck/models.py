@@ -64,6 +64,32 @@ class Match(BaseModel):
     note: str  # one plain sentence for the user
 
 
+class RosterEntry(BaseModel):
+    """One person expected to pay, e.g. a student and their monthly fee."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    due: Decimal
+    # Who actually sends the money, e.g. a parent paying a child's fees.
+    payers: tuple[str, ...] = ()
+    upi_id: str | None = None
+
+
+RosterStatus = Literal["paid", "partial", "claimed", "unpaid"]
+
+
+class RosterLine(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    due: Decimal
+    received: Decimal
+    status: RosterStatus
+    rows: tuple[int, ...]  # statement rows counted towards this person
+    note: str
+
+
 class Statement(BaseModel):
     model_config = ConfigDict(frozen=True)
 
