@@ -4,9 +4,10 @@ import io
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-# Phone screenshots are ~2-3 megapixels. Anything far bigger is either not a
-# screenshot or a decompression bomb, and we refuse it before decoding pixels.
-MAX_PIXELS = 40_000_000
+# Phone screenshots are ~2-5 megapixels; a phone *photo* of a screen is ~12-24 MP.
+# Anything bigger is not a payment proof, and at 40 MP the RGB copies made while
+# decoding, rotating and resizing peak near half a gigabyte. Refused before decoding.
+MAX_PIXELS = 25_000_000
 
 
 class ImageError(ValueError):
@@ -18,7 +19,10 @@ def load_image(data: bytes) -> Image.Image:
         image = Image.open(io.BytesIO(data))
         width, height = image.size  # read from the header only, pixels not decoded yet
         if width * height > MAX_PIXELS:
-            raise ImageError("Image is too large to be a payment screenshot.")
+            raise ImageError(
+                f"Image is too large to be a payment screenshot "
+                f"(over {MAX_PIXELS // 1_000_000} megapixels)."
+            )
         image.load()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
         raise ImageError("File is not a readable image.") from error
