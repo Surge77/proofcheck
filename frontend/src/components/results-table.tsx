@@ -34,7 +34,7 @@ export function ResultsTable({ rows }: ResultsTableProps) {
                 <td className="max-w-40 truncate px-3 py-2" title={receipt.source}>
                   {receipt.source}
                 </td>
-                <td className="px-3 py-2">{receipt.payer ?? "—"}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{receipt.payer ?? "—"}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatInr(receipt.amount)}</td>
                 <td className="px-3 py-2 font-mono text-xs">{receipt.utr ?? "—"}</td>
                 <td className="px-3 py-2">
