@@ -1,0 +1,28 @@
+# Real screenshots and bank statements used for local accuracy tests.
+# These contain personal financial data and must never be committed.
+private/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+
+# Secrets and local config
+.env
+.env.*
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.stackdump
