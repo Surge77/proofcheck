@@ -2,23 +2,17 @@ import logging
 from pathlib import Path
 
 import uvicorn
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from proofcheck.api import router
 from proofcheck.config import get_settings
 
 # The built frontend is served from the same port, so the app is a single local address.
 FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
-
-health_router = APIRouter(prefix="/api")
-
-
-@health_router.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
 
 
 def _mount_frontend(app: FastAPI) -> None:
@@ -42,7 +36,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware, allow_origins=DEV_ORIGINS, allow_methods=["*"], allow_headers=["*"]
     )
-    app.include_router(health_router)
+    app.include_router(router)
     if (FRONTEND_DIST / "assets").is_dir():
         _mount_frontend(app)
     return app
