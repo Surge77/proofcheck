@@ -45,6 +45,51 @@ class StatementTxn(BaseModel):
     narration: str
 
 
+MatchStatus = Literal[
+    "verified",  # the UTR is in the statement with the same amount: money really arrived
+    "amount_mismatch",  # the UTR is there but the amount differs (edited screenshot?)
+    "not_in_statement",  # no such UTR in this period: possibly fake, or not settled yet
+    "outside_period",  # the screenshot date is outside the statement's dates
+    "duplicate_proof",  # the same UTR was already used by another screenshot
+    "unreadable",  # we couldn't read a UTR from the screenshot
+]
+
+
+class Match(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    receipt: Receipt
+    credit: StatementTxn | None
+    status: MatchStatus
+    note: str  # one plain sentence for the user
+
+
+class RosterEntry(BaseModel):
+    """One person expected to pay, e.g. a student and their monthly fee."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    due: Decimal
+    # Who actually sends the money, e.g. a parent paying a child's fees.
+    payers: tuple[str, ...] = ()
+    upi_id: str | None = None
+
+
+RosterStatus = Literal["paid", "partial", "claimed", "unpaid"]
+
+
+class RosterLine(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    due: Decimal
+    received: Decimal
+    status: RosterStatus
+    rows: tuple[int, ...]  # statement rows counted towards this person
+    note: str
+
+
 class Statement(BaseModel):
     model_config = ConfigDict(frozen=True)
 
