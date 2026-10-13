@@ -4,12 +4,8 @@ The models ship inside the `rapidocr` wheel, so reading a screenshot never
 touches the network.
 """
 
-import logging
 from functools import lru_cache
 from typing import Any, Protocol
-
-# RapidOCR logs every model path at INFO on start-up; that is noise for users.
-logging.getLogger("RapidOCR").setLevel(logging.WARNING)
 
 
 class LineReader(Protocol):
@@ -21,7 +17,9 @@ def _engine() -> Any:
     # Imported lazily: loading the models takes ~1.5 s and tests that stub OCR shouldn't pay it.
     from rapidocr import RapidOCR
 
-    return RapidOCR()
+    # The constructor resets RapidOCR's logger from its config; at the default INFO it
+    # prints every model path on start-up, which is noise for users.
+    return RapidOCR(params={"Global.log_level": "warning"})
 
 
 def read_lines(image_png: bytes) -> list[str]:
