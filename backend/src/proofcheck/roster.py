@@ -65,15 +65,19 @@ def parse_roster(data: bytes) -> tuple[RosterEntry, ...]:
     except UnicodeDecodeError:
         text = data.decode("cp1252", errors="replace")
     reader = csv.DictReader(io.StringIO(text))
-    header = [h.strip().lower() for h in reader.fieldnames or []]
-    reader.fieldnames = header
+    try:
+        header = [h.strip().lower() for h in reader.fieldnames or []]
+        reader.fieldnames = header
+        rows = list(reader)
+    except csv.Error as error:  # e.g. a single field over the csv module's 128 KB limit
+        raise RosterError("The roster CSV could not be read. Save it again as CSV.") from error
     name_col, amount_col = _column(header, _NAME_COLUMNS), _column(header, _AMOUNT_COLUMNS)
     if name_col is None or amount_col is None:
         raise RosterError("The roster needs a 'name' column and an 'amount' column.")
     payer_col, upi_col = _column(header, _PAYER_COLUMNS), _column(header, _UPI_COLUMNS)
 
     entries: list[RosterEntry] = []
-    for row_number, row in enumerate(reader, start=2):
+    for row_number, row in enumerate(rows, start=2):
         name = (row.get(name_col) or "").strip()
         try:
             due = Decimal((row.get(amount_col) or "").replace(",", "").strip())

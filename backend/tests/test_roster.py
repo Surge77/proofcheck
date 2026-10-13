@@ -124,3 +124,8 @@ def test_credit_matching_two_people_is_not_assigned() -> None:
     lines = summarise(roster, statement(credit(5, "500", "RAMESH K")), [])
 
     assert [line.status for line in lines] == ["unpaid", "unpaid"]
+
+
+def test_roster_field_over_the_csv_module_limit_is_a_roster_error() -> None:
+    with pytest.raises(RosterError, match="could not be read"):
+        parse_roster(b"name,amount\n" + b"x" * 200_000 + b",10\n")

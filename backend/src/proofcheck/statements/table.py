@@ -2,6 +2,7 @@
 
 import csv
 import io
+import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -16,8 +17,13 @@ from proofcheck.statements.values import parse_amount, parse_date
 Row = list[object]
 
 SPREADSHEET_SUFFIXES = {".xls", ".xlsx", ".xlsm", ".ods"}
+ZIP_SUFFIXES = {".xlsx", ".xlsm", ".ods"}  # .xls is an uncompressed OLE file
 # Bank preambles (name, address, account number, filters) run to ~20 rows.
 HEADER_SEARCH_ROWS = 40
+# A year of daily transactions is a few thousand rows; these limits only stop abuse.
+# The upload is capped at 5 MB, but a zipped spreadsheet can expand to gigabytes.
+MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_ROWS = 100_000
 
 _ALIASES: dict[str, tuple[str, ...]] = {
     "date": ("txn date", "transaction date", "tran date", "date", "posting date", "value date"),
@@ -60,15 +66,30 @@ def _decode(data: bytes) -> str:
     return data.decode("latin-1")
 
 
-def read_rows(filename: str, data: bytes) -> list[Row]:
-    suffix = PurePath(filename).suffix.lower()
-    if suffix == ".csv":
+def _check_zip_size(data: bytes) -> None:
+    """Refuse .xlsx/.ods files that would decompress into far more than any real statement."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            expanded = sum(info.file_size for info in archive.infolist())
+    except zipfile.BadZipFile:
+        return  # not a zip after all; calamine will report the real problem
+    if expanded > MAX_UNCOMPRESSED_BYTES:
+        raise StatementError("This spreadsheet is too large to be a bank statement.")
+
+
+def _read_csv(data: bytes) -> list[Row]:
+    try:
         return [list(row) for row in csv.reader(io.StringIO(_decode(data)))]
-    if suffix not in SPREADSHEET_SUFFIXES:
-        raise StatementError("Upload the statement as a CSV or Excel file (.csv, .xls, .xlsx).")
+    except csv.Error as error:  # e.g. a single field over the csv module's 128 KB limit
+        raise StatementError("This CSV could not be read. Re-export it from your bank.") from error
+
+
+def _read_spreadsheet(suffix: str, data: bytes) -> list[Row]:
     if data.lstrip()[:1] == b"<":
         # Some net-banking sites save an HTML page with an .xls name.
         raise StatementError("This .xls is really a web page. Save it as CSV and upload that.")
+    if suffix in ZIP_SUFFIXES:
+        _check_zip_size(data)
     try:
         workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
         return [list(row) for row in workbook.get_sheet_by_index(0).to_python()]
@@ -76,6 +97,19 @@ def read_rows(filename: str, data: bytes) -> list[Row]:
         raise StatementError(
             "Could not open this spreadsheet. Save it as CSV and retry."
         ) from error
+
+
+def read_rows(filename: str, data: bytes) -> list[Row]:
+    suffix = PurePath(filename).suffix.lower()
+    if suffix == ".csv":
+        rows = _read_csv(data)
+    elif suffix in SPREADSHEET_SUFFIXES:
+        rows = _read_spreadsheet(suffix, data)
+    else:
+        raise StatementError("Upload the statement as a CSV or Excel file (.csv, .xls, .xlsx).")
+    if len(rows) > MAX_ROWS:
+        raise StatementError(f"The statement has more than {MAX_ROWS:,} rows. Export one month.")
+    return rows
 
 
 def _normalise(cell: object) -> str:

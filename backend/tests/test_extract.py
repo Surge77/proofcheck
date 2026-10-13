@@ -10,7 +10,13 @@ from proofcheck.ocr import LineReader
 from proofcheck.vision import VisionError, VisionReading
 from tests.factories import receipt_png
 
-LINES = ["Payment Successful", "₹1,500", "UPI transaction ID", "5123 4567 8901"]
+LINES = [
+    "Payment Successful",
+    "₹1,500",
+    "From: Ramesh Kumar",
+    "UPI transaction ID",
+    "5123 4567 8901",
+]
 
 
 def reading(**overrides: object) -> VisionReading:
@@ -115,3 +121,36 @@ async def test_extract_falls_back_to_ocr_when_vision_fails() -> None:
 async def test_extract_rejects_non_images() -> None:
     with pytest.raises(ImageError):
         await extract("a.png", b"nope", fake_ocr(LINES))
+
+
+def test_success_claim_contradicted_by_screen_text_becomes_unclear() -> None:
+    # Text planted in a screenshot can talk Gemma into "success"; OCR still sees "Failed".
+    lines = ["Payment Failed", *LINES[1:]]
+
+    receipt = fuse("a.png", lines, reading(status="success"))
+
+    assert receipt.status == "unclear"
+    assert receipt.confidence == "low"
+
+
+def test_success_without_any_success_word_on_screen_is_low_confidence() -> None:
+    lines = [line for line in LINES if line != "Payment Successful"]
+
+    receipt = fuse("a.png", lines, reading())
+
+    assert receipt.confidence == "low"
+    assert any("success" in issue for issue in receipt.issues)
+
+
+def test_payer_name_not_printed_on_screen_is_dropped() -> None:
+    receipt = fuse("a.png", LINES, reading(payer="Suresh Patil"))
+
+    assert receipt.payer is None
+    assert any("name" in issue for issue in receipt.issues)
+
+
+def test_payer_name_match_ignores_case_and_spacing() -> None:
+    receipt = fuse("a.png", LINES, reading(payer="RAMESH  kumar"))
+
+    assert receipt.payer == "RAMESH  kumar"
+    assert receipt.confidence == "high"
