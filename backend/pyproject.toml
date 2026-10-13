@@ -13,6 +13,7 @@ dependencies = [
     "pillow==12.3.0",
     "rapidocr==3.9.2",
     "onnxruntime==1.30.0",
+    "python-calamine==0.8.2",
 ]
 
 [dependency-groups]
@@ -46,6 +47,10 @@ target-version = "py311"
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "PTH", "RUF"]
 # FastAPI's `Depends()`/`File()` defaults are the documented pattern.
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# The in-memory .xlsx builder holds fixed OOXML content-type URIs that can't be shortened.
+"tests/sheets.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["proofcheck"]
