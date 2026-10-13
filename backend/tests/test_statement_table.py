@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from proofcheck.statements import StatementError, parse_statement
+from proofcheck.statements import StatementError, parse_statement, table
 from tests.sheets import HDFC_ROWS, KOTAK_DRCR_ROWS, SBI_ROWS, csv_bytes, xlsx_bytes
 
 
@@ -75,3 +75,25 @@ def test_reads_windows_1252_csv() -> None:
 def test_unusable_files_raise_a_helpful_error(name: str, data: bytes, message: str) -> None:
     with pytest.raises(StatementError, match=message):
         parse_statement(name, data)
+
+
+def test_csv_field_over_the_csv_module_limit_is_a_statement_error() -> None:
+    rows = [*SBI_ROWS[:4], ["3 Oct 2026", "3 Oct 2026", "x" * 200_000, "", "", "10", ""]]
+
+    with pytest.raises(StatementError, match="could not be read"):
+        parse_statement("sbi.csv", csv_bytes(rows))
+
+
+def test_spreadsheet_that_expands_too_much_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A real zip bomb is huge; lowering the limit exercises the same check cheaply.
+    monkeypatch.setattr(table, "MAX_UNCOMPRESSED_BYTES", 100)
+
+    with pytest.raises(StatementError, match="too large"):
+        parse_statement("statement.xlsx", xlsx_bytes(SBI_ROWS))
+
+
+def test_statement_with_too_many_rows_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(table, "MAX_ROWS", 3)
+
+    with pytest.raises(StatementError, match="rows"):
+        parse_statement("sbi.csv", csv_bytes(SBI_ROWS))
