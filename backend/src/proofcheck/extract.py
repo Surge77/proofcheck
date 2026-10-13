@@ -99,7 +99,8 @@ def _fuse_status(
 
 
 def _words(text: str) -> list[str]:
-    return re.sub(r"[^A-Za-z]+", " ", text).upper().split()
+    # OCR often reads a capital I as a small l ("Iyer" -> "lyer"); compare them as one letter.
+    return re.sub(r"[^A-Za-z]+", " ", text).upper().replace("L", "I").split()
 
 
 def _fuse_payer(lines: Sequence[str], payer: str | None, issues: list[str]) -> str | None:

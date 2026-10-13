@@ -26,3 +26,6 @@ dist/
 .DS_Store
 Thumbs.db
 *.stackdump
+
+# Browser-automation scratch output
+.playwright-mcp/
