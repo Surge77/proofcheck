@@ -77,6 +77,8 @@ Text that OCR read from the same image, top to bottom (may contain small errors)
 {ocr_text}"""
 
 
+# trust_env=False everywhere: a system HTTP(S)_PROXY / ALL_PROXY must never carry screenshots
+# off the machine, even though Ollama is on loopback.
 async def _chat(prompt: str, image: bytes, schema: dict[str, Any]) -> str:
     settings = get_settings()
     body: dict[str, Any] = {
@@ -88,7 +90,7 @@ async def _chat(prompt: str, image: bytes, schema: dict[str, Any]) -> str:
         "format": schema,
         "options": {"temperature": 0},
     }
-    async with httpx.AsyncClient(timeout=settings.vision_timeout_s) as client:
+    async with httpx.AsyncClient(timeout=settings.vision_timeout_s, trust_env=False) as client:
         response = await client.post(f"{settings.ollama_url}/api/chat", json=body)
         response.raise_for_status()
         return str(response.json()["message"]["content"])
@@ -108,7 +110,7 @@ async def read_receipt(image_png: bytes, ocr_lines: Sequence[str]) -> VisionRead
 async def is_available() -> bool:
     settings = get_settings()
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=3.0, trust_env=False) as client:
             response = await client.get(f"{settings.ollama_url}/api/tags")
             response.raise_for_status()
             names = {m.get("name") for m in response.json().get("models", [])}
