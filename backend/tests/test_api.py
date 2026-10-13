@@ -34,7 +34,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         return fake_receipt(source)
 
     monkeypatch.setattr(api, "extract", fake_extract)
-    return TestClient(create_app())
+    return TestClient(create_app(), base_url="http://127.0.0.1")
 
 
 def post(client: TestClient, screenshots: list[tuple[str, bytes, str]], **extra: Any) -> Any:

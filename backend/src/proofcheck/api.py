@@ -126,16 +126,32 @@ async def _inputs(
     return screenshots, statement, roster
 
 
+# One check at a time: the GPU holds a single vision model, and a second batch would
+# only queue behind the first while holding all of its uploads in memory. The event
+# loop is single-threaded and nothing awaits between the test and the set, so no race.
+_is_running = False
+
+
 @router.post("/check")
 async def check(request: Request) -> StreamingResponse:
-    form = await _parse_form(request)
+    global _is_running
+    if _is_running:
+        raise HTTPException(429, "A check is already running. Wait for it to finish.")
+    _is_running = True
+    try:
+        form = await _parse_form(request)
+    except BaseException:
+        _is_running = False
+        raise
     try:
         screenshots, statement, roster = await _inputs(form)
-    except HTTPException:
+    except BaseException:
+        _is_running = False
         await form.close()
         raise
 
     async def stream() -> AsyncIterator[bytes]:
+        global _is_running
         try:
             receipts: list[Receipt] = []
             for upload in screenshots:
@@ -152,6 +168,7 @@ async def check(request: Request) -> StreamingResponse:
             report = build_report(receipts, statement, roster)
             yield _line({"type": "report", "report": report.model_dump(mode="json")})
         finally:
+            _is_running = False
             await form.close()  # frees the in-memory copies of every upload
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
